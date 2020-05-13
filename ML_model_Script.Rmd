@@ -1,0 +1,252 @@
+---
+title: "Spotify"
+author: "Soumaya Sabry"
+date: "06/11/2019"
+output: html_document
+---
+# Importing the dataset
+```{r}
+spotify = read.csv("spotify.csv", encoding="UTF-8")
+```
+
+# Exploring the dataset 
+```{r}
+str(spotify)
+```
+
+```{r}
+#to see it in details
+summary(spotify) 
+```
+```{r}
+# we will build a model to estimat the target [0|1]
+# So we will use a supervied learning , clasification models 
+# we have a binary case which can be 0 or 1 
+# we can see that there is 16 columns in the dataset, 3 of them describe the track: track’s name, artist, and the target.
+# I will erase the colume of song_title and artist , there are onlu character there will be not use in it for the model
+dataset = spotify[c(-15,-16)]
+head(dataset)
+# here, I replicate my data , because it is professionel to not touch our client data if we want to analyse it 
+```
+
+# Describing the dataset
+```{r}
+# Now,we have 13 variables that can be used in the model 
+# it is time to analyse it to see which varaiable is more significant to my model
+
+table(dataset$key) # E.g. 0 = C, 1 = C♯/D♭, 2 = D, and so on
+table(dataset$mode) # Major is represented by 1 and minor is 0
+table(dataset$time_signature)  # how many beats are in each bar (or measure) 
+
+# we can said that thoses varaible are considered like a Categorical variable (nombre discret)
+
+table(dataset$target)
+# there are a good repartion between the 2 classes (48,9%)for 0 and (51,1)for 1
+```
+```{r}
+#lets see them visually
+mosaicplot(~ target + key, data=dataset,
+  main = "MosaicPlot of two categorical variables: Target & Key",
+  color = 2:3, las = 1)
+
+mosaicplot(~ target + mode, data=dataset,
+  main = "MosaicPlot of two categorical variables: Target & Mode",
+  color = 2:3, las = 1)
+
+mosaicplot(~ target + time_signature, data=dataset,
+  main = "MosaicPlot of two categorical variables: Target & Time Signature",
+  color = 2:3, las = 1)
+
+#of the frist 2 mosaicoplot wee can say there there are a good distribution betwen the key , mode and the target
+# but in the thrid one wee can see that most of our varaibles is located in the catagory 4 
+# which can mean that is not significant, lets prove it with a test 
+```
+
+
+```{r}
+# lets apply a Chi-square test, H0 is the independance between ::
+
+chisq.test(dataset$target, dataset$key)
+chisq.test(dataset$target, dataset$mode)
+chisq.test(dataset$target, dataset$time_signature)
+
+# First 2 variables. You will notice that p-value = 0.03 & 0.01 which is not higher than 0.05
+# so we can reject H0. that means that there are dependance between them & tarjet 
+
+# for the last one the chi test can't be apply correctly and also he get a p value of 0.6 
+#which is higher than 0.05 , so we cannot reject H0, there he prove my point 
+
+```
+
+
+```{r}
+library(corrplot)
+corrplot(cor(dataset))
+corrplot.mixed(cor(dataset))
+# that very Nice , we can see that there not alot of correlation between the varaibles 
+# the highest one is between energy & loudness (0.76) 
+# but i prefere to keep it and try anthone test 
+```
+
+```{r}
+summary(aov(target ~ energy, data = dataset))
+#the p value is (0.07) it is small but not samller the 0.05 
+#which is higher than 0.05 , so we cannot reject H0
+summary(aov(target ~ loudness, data = dataset))
+# But there the p value is 0.002 it is very small that mean we can rejette H0 , so it is a significant one
+```
+```{r}
+summary(aov(target ~ liveness, data = dataset))
+summary(aov(target ~ tempo, data = dataset))
+
+#the p value is (0.237) &(0.1) which is higher than 0.05 , so we cannot reject H0
+```
+
+```{r}
+summary(aov(target ~ speechiness, data = dataset))
+# P -value is very small that mean we can rejet H0
+boxplot(speechiness~target , data=dataset, col = "blue", main="Boxplot Age ~ Purchased")
+# the plot show us that the mean between the 2 classe are praticly the same but classe 1 have more values
+```
+
+
+```{r}
+summary(aov(target ~ danceability, data = dataset))
+# P -value is very small that mean we can rejet H0 , the varaible can be significant
+boxplot(danceability~target , data=dataset, col = "blue", main="Boxplot Age ~ Purchased")
+#the mean of the user who likes the track , is biggier then who didn't like 
+# that mean if the user like the taack that is suitable for dancing.
+hist(dataset$danceability)
+#The distribution of values for this feature look like a normal lo that mean it is good one .
+```
+
+
+```{r}
+summary(aov(target ~ duration_ms, data = dataset))
+# P -value is very small that mean we can rejet H0
+boxplot(duration_ms~target , data=dataset, col = "blue", main="Boxplot Age ~ Purchased")
+# the plot show us that the mean between the 2 classe are praticly the same 
+#but the duration of the target (classe 1) have more values, more time 
+```
+
+# Data preprocessing
+```{r}
+# after the analyses we can erase some varaible that can pollute the model 
+dataToBeSplit = dataset [c(-4,-7,-11, -12)]
+# then we will scale the not Categorical variable (nombre continue), we will put theme in 
+# the same order (of magnitude) so we can compere them .
+# we scale it before split that we can have the same var and mean 
+dataScale = dataToBeSplit
+dataScale[c(-5,-7,-10)]= scale(dataScale[c(-5,-7,-10)])
+#dataScale[-10]= scale(dataScale[-10])
+head(dataScale)
+```
+# Data splitting
+```{r}
+library(caTools)
+set.seed(702140) 
+# we use the function set.seed()to randomly generate the same values
+split = sample.split(dataScale$target, SplitRatio = 0.75)
+training_set = subset(dataScale, split == TRUE)
+test_set = subset(dataScale, split == FALSE)
+# here we chose the SplitRatio to 75% of the dataset, and 25% for the test set.
+cat ("dim de training data ::", dim (training_set), "\n")
+cat ("dim de test data ::", dim (test_set))
+```
+
+# Building models 
+GLM
+```{r}
+classifier.glm1 <- glm(target ~ . , family = binomial, data=training_set)
+summary(classifier.glm1)
+# we can see that the P value of key and mode is very high so we will re try without it 
+```
+
+```{r}
+classifier.glm2 <- glm(target ~ .-key -mode , family = binomial, data=training_set)
+summary(classifier.glm2)
+# there is the best model that i can have 
+# I try to erase ecah of the variables  alone and retest 
+# I had a lot of AIC ~= 1892 , which is bigger taht taht one AIC = 1889.3
+# The model with lower value of AIC is better
+# that mean that all the varaible in this model are as significant as all of them 
+```
+
+
+```{r}
+# an anova test in GLM doen't describe mush the model 
+anova(classifier.glm2)
+
+```
+```{r}
+# prediction
+pred.glm = predict(classifier.glm2, newdata = test_set[,-10], type="response")
+#head (pred.glm)
+
+# Now let's assign observations to classes with respect to the probabilities
+pred.glm_0_1 = ifelse(pred.glm >= 0.5, 1,0)
+#head(pred.glm_0_1)
+
+# lets see the matrix of confusion 
+cm = table(pred.glm_0_1,t(test_set[,10]))
+
+# You can show the confusion matrix in a mosaic plot by the way
+mosaicplot(cm,col=sample(1:8,2)) # colors are random between 8 colors.
+```
+
+# LDA & QDA 
+```{r}
+library(MASS)
+classifier.lda <- lda(target~ ., data=training_set)
+classifier.lda
+# I chose to do a LDA model because it is more accurat if classe >=2 by using the Discriminant Analysis 
+# the model LDA don't be infulence with the key and the model so i keep them 
+```
+```{r}
+# prediction 
+pred.lda=predict(classifier.lda, newdata = test_set[-10],type=response)
+summary(pred.lda)
+#Return a list of 3 elements
+#1st element class : that is the prediction of which class belongs to {0,1,2,.....nbofclass}
+#2nd element posterior : indicates the probability that the i-th observation belongs to class 0 and the probability that the i-th observation belongs to class 1 
+#this is why it is a matrice of [nb of test, nb of class]
+#3rd element x  : represente the calculation of F(x) it is used to have the discriminants but not to be interpret
+
+cm1 = table(pred.lda[["class"]], t(test_set[,10]))
+cm1
+mosaicplot(cm1, col=sample(1:8,2))
+```
+
+```{r}
+# QDA is much bette then lda in somme cases so lets prove it with the accuracy 
+classifier.qda <- qda(target~., data = training_set)
+pred.qda=predict(classifier.qda,newdata = test_set[,-10],type="response")
+cm2 = table(pred.qda[["class"]], t(test_set[,10]))
+cm2
+```
+```{r}
+accuracy_glm = (cm[1,1]+cm[2,2])/(cm[1,1]+cm[1,2]+cm[2,1]+cm[2,2])
+cat("Accuracy of GLM", round(accuracy_glm*100, 2 ) , "%\n")
+accuracy_lda = (cm1[1,1]+cm1[2,2])/(cm1[1,1]+cm1[1,2]+cm1[2,1]+cm1[2,2])
+cat("Accuracy of LDA", round(accuracy_lda*100, 2) , "%\n")
+accuracy_qda = (cm2[1,1]+cm2[2,2])/(cm2[1,1]+cm2[1,2]+cm2[2,1]+cm2[2,2])
+cat("Accuracy of QDA",  round(accuracy_qda*100,2) , "%\n")
+# as Said the LDA is better then GLM and QDA is mush better then both 
+```
+
+# Assessing models (ROC)
+```{r}
+# lets see that using the AUC 
+require(ROCR)
+score <- prediction(pred.glm,test_set[,10])
+plot(performance(score,"tpr","fpr"),col="green")
+abline(0,1,lty=8)
+par(new=TRUE) #pour superposer les courbes
+score_lda <- prediction(pred.lda$posterior[,2],test_set[,10])
+plot(performance(score_lda,"tpr","fpr"),col="blue")
+par(new=TRUE) #pour superposer les courbes
+score_qda <- prediction(pred.qda$posterior[,2],test_set[,10])
+plot(performance(score_qda,"tpr","fpr"),col="red")
+#the plots shows that the red one have the most AUC that means the QDA has the bettre prediction of all the models
+```
+
